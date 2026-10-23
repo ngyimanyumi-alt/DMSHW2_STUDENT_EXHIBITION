@@ -8,6 +8,8 @@ import {
   catalogReading,
   interpretCards,
   resetReadingMemoryForTests,
+  type ReadingLanguage,
+  type ReadingTopic,
 } from "./galleryReading";
 
 beforeEach(() => {
@@ -17,7 +19,7 @@ beforeEach(() => {
 afterEach(() => resetReadingMemoryForTests());
 
 const completeReading =
-  "騎士帶來訊號，三葉草提示小小轉機。以兩個符號做一張快速拼貼。";
+  "學習上，騎士可提醒你主動提問，三葉草則讓人想到小步嘗試。今天向老師問清楚一項作業要求，再用十分鐘試一道有興趣的題目。";
 function modelResponse(content: string, finishReason = "stop") {
   return { choices: [{ finish_reason: finishReason, message: { content } }] };
 }
@@ -113,64 +115,215 @@ describe("card reading service", () => {
   it.each([
     {
       lang: "zh" as const,
-      response:
-        "騎士帶來新的訊息，三葉草提供一個小小的可能。試著畫出你想探索的方向。",
-      guidance: "語氣溫和、尊重",
-      reflection: "可以慢慢觀察、思考選擇或探索成長",
+      response: completeReading,
     },
     {
       lang: "en" as const,
       response:
-        "Rider suggests a new message, while Clover offers a small possibility. Sketch one direction you would like to explore.",
-      guidance: "gentle, respectful tone",
-      reflection: "reflect, consider manageable choices, or explore growth",
+        "For study, Rider can represent asking questions and Clover a small experiment. Ask your teacher about one unclear assignment requirement, then try an interesting question for ten minutes.",
     },
   ])(
     "gives accessible, gentle $lang guidance without forcing positivity",
-    async ({ lang, response, guidance, reflection }) => {
+    async ({ lang, response }) => {
       llm.invokeLLM.mockResolvedValue(modelResponse(response));
-      await interpretCards({
+      const result = await interpretCards({
         cards: [...cards],
         topic: "study",
         lang,
       });
-      const system = llm.invokeLLM.mock.calls[0]![0].messages[0].content;
-      expect(system).toContain(guidance);
-      expect(system).toContain(reflection);
-      expect(system).toContain("2–3");
-      expect(system).toContain(
-        lang === "zh" ? "不要刻意精簡" : "do not shorten the reading",
+      expect(result).toEqual({ source: "ai", text: response });
+      const messages = llm.invokeLLM.mock.calls[0]![0].messages;
+      const system = messages[0].content;
+      expect(system).toMatch(
+        lang === "zh" ? /簡短、日常/ : /short, plain-language/,
       );
+      expect(system).toMatch(
+        lang === "zh"
+          ? /溫和、尊重、鼓勵而實際/
+          : /gentle, respectful, encouraging but realistic/,
+      );
+      expect(system).toContain("2–3");
+      expect(system).toMatch(
+        lang === "zh" ? /今天能嘗試的小步驟/ : /small steps to try today/,
+      );
+      expect(system).toMatch(
+        lang === "zh"
+          ? /不保證成功，不猜測別人的心意/
+          : /without promising success or guessing another person's feelings/,
+      );
+      expect(system).toMatch(
+        lang === "zh"
+          ? /不要固定以拼貼或速寫收尾/
+          : /or always end with a collage or sketch/,
+      );
+      expect(system).toMatch(
+        lang === "zh" ? /不是命運或未來預測/ : /not fate or a prediction/,
+      );
+      expect(messages[1].content).toContain(lang === "zh" ? "學習" : "study");
+      for (const card of cards) {
+        expect(messages[1].content).toContain(
+          lang === "zh" ? card.nameZh : card.nameEn,
+        );
+        expect(messages[1].content).toContain(
+          lang === "zh" ? card.descriptionZh : card.descriptionEn,
+        );
+      }
     },
   );
 
+  it.each(["zh", "en"] as const)(
+    "falls back rather than showing an overlong %s reading",
+    async (lang) => {
+      const text =
+        lang === "zh"
+          ? `騎士與三葉草。${"先試一道題目。".repeat(40)}`
+          : `Rider and Clover. ${"Try one question. ".repeat(40)}`;
+      llm.invokeLLM.mockResolvedValue(modelResponse(text));
+      expect((await interpretCards({ ...input, lang })).source).toBe("catalog");
+    },
+  );
+
+  it("does not reuse a cached reading for a different topic, language, or pair", async () => {
+    llm.invokeLLM.mockResolvedValue(modelResponse(completeReading));
+    await interpretCards(input);
+    await interpretCards({ ...input, topic: "love" });
+    await interpretCards({ ...input, lang: "en" });
+    await interpretCards({ ...input, cards: [cards[0], CARD_CATALOG[2]!] });
+    expect(llm.invokeLLM).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("catalog guidance", () => {
+  const topics: ReadingTopic[] = ["study", "love", "daily"];
+  const languages: ReadingLanguage[] = ["zh", "en"];
+  const pair = [CARD_CATALOG[20]!, CARD_CATALOG[32]!] as const; // Mountain + Key
+
   it.each([
-    [
-      "zh" as const,
-      "study" as const,
-      "學習",
-      "不必急著下結論",
-      "小型拼貼或速寫",
-    ],
-    [
-      "en" as const,
-      "love" as const,
-      "love and relationships",
-      "without needing to decide",
-      "small collage or sketch",
-    ],
+    {
+      lang: "zh" as const,
+      topic: "study" as const,
+      context: /學習/,
+      actions: [/作業.*十分鐘/, /題目.*條件.*解法/],
+    },
+    {
+      lang: "en" as const,
+      topic: "study" as const,
+      context: /study/,
+      actions: [/assignment.*ten minutes/, /condition.*question.*solution/],
+    },
+    {
+      lang: "zh" as const,
+      topic: "love" as const,
+      context: /人際/,
+      actions: [/平靜.*改善/, /需要.*一起.*解法/],
+    },
+    {
+      lang: "en" as const,
+      topic: "love" as const,
+      context: /relationships/,
+      actions: [/calmly.*change/, /need.*solution together/],
+    },
+    {
+      lang: "zh" as const,
+      topic: "daily" as const,
+      context: /日常/,
+      actions: [/拆小.*做得到/, /資源或資訊/],
+    },
+    {
+      lang: "en" as const,
+      topic: "daily" as const,
+      context: /daily life/,
+      actions: [/smaller parts.*manageable/, /resource.*information/],
+    },
   ])(
-    "keeps the %s catalog fallback specific, reflective, and complete",
-    (lang, topic, topicText, gentleSuggestion, artSuggestion) => {
-      const text = catalogReading([...cards], topic, lang);
-      expect(text).toContain(topicText);
-      expect(text).toContain(lang === "zh" ? cards[0].nameZh : cards[0].nameEn);
-      expect(text).toContain(lang === "zh" ? cards[1].nameZh : cards[1].nameEn);
-      expect(text).toContain(gentleSuggestion);
-      expect(text).toContain(artSuggestion);
-      expect(text.match(/[。.!?！？]/g) ?? []).toHaveLength(3);
-      expect(text).not.toMatch(
-        lang === "zh" ? /不是對未來的預測/ : /not a prediction of the future/,
+    "offers concrete $lang steps for $topic, not just a topic label",
+    ({ lang, topic, context, actions }) => {
+      const text = catalogReading([...pair], topic, lang);
+      expect(text).toMatch(context);
+      for (const action of actions) expect(text).toMatch(action);
+      expect(text).not.toMatch(/拼貼|速寫|collage|sketch/);
+    },
+  );
+
+  it.each(languages)(
+    "changes the advice itself when either card or the topic changes (%s)",
+    (lang) => {
+      // Compare only the action sentences, not the introductory names or topic.
+      const advice = (first: number, second: number, topic: ReadingTopic) =>
+        catalogReading(
+          [CARD_CATALOG[first]!, CARD_CATALOG[second]!],
+          topic,
+          lang,
+        )
+          .split(/[。.]/)
+          .slice(1)
+          .join(".");
+      expect(new Set(topics.map((topic) => advice(0, 1, topic))).size).toBe(3);
+      for (const topic of topics) {
+        expect(
+          new Set(
+            CARD_CATALOG.slice(1).map((card) => advice(0, card.id - 1, topic)),
+          ).size,
+        ).toBe(35);
+        expect(
+          new Set(
+            CARD_CATALOG.slice(0, -1).map((card) =>
+              advice(card.id - 1, 35, topic),
+            ),
+          ).size,
+        ).toBe(35);
+      }
+    },
+  );
+
+  it.each(languages)(
+    "keeps every pair and topic short, readable and complete (%s)",
+    (lang) => {
+      for (const first of CARD_CATALOG) {
+        for (const second of CARD_CATALOG) {
+          if (first.id === second.id) continue;
+          for (const topic of topics) {
+            const text = catalogReading([first, second], topic, lang);
+            const name = lang === "zh" ? "nameZh" : "nameEn";
+            expect(text).toContain(first[name]);
+            expect(text).toContain(second[name]);
+            expect(text).not.toMatch(/undefined|null/);
+            expect(text.length).toBeLessThanOrEqual(lang === "zh" ? 240 : 600);
+            expect(text.match(/[。.!?！？]/g)?.length).toBeGreaterThanOrEqual(
+              2,
+            );
+            expect(text.match(/[。.!?！？]/g)?.length).toBeLessThanOrEqual(3);
+            if (lang === "en")
+              expect(text.split(/\s+/).length).toBeLessThanOrEqual(100);
+            expect(text).not.toMatch(
+              /看看它們如何連結|不必急著下結論|small collage or sketch|not a prediction|不是.*預測/,
+            );
+            expect(text).not.toMatch(
+              /注定|必定成功|災難|背叛|死亡|guaranteed|disaster|betrayal|death|destined/i,
+            );
+          }
+        }
+      }
+    },
+  );
+
+  it.each(languages)(
+    "handles challenging symbols with manageable choices, not warnings (%s)",
+    (lang) => {
+      const text = catalogReading(
+        [CARD_CATALOG[7]!, CARD_CATALOG[35]!],
+        "study",
+        lang,
+      );
+      expect(text).toMatch(
+        lang === "zh"
+          ? /沒有效.*方法.*較短.*練習/
+          : /unhelpful study method.*shorter practice/,
+      );
+      expect(text).toMatch(
+        lang === "zh"
+          ? /意義.*量力而為/
+          : /why this subject matters.*manageable/,
       );
     },
   );
