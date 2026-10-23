@@ -45,13 +45,13 @@ describe("card reading service", () => {
         model: "gemini-3.8-flash",
         maxTokens: 1024,
         reasoning: { effort: "low" },
-      })
+      }),
     );
   });
 
   it("rejects a token-truncated completion even when its text otherwise looks complete", async () => {
     llm.invokeLLM.mockResolvedValueOnce(
-      modelResponse(completeReading, "length")
+      modelResponse(completeReading, "length"),
     );
     llm.invokeLLM.mockResolvedValueOnce(modelResponse(completeReading));
     expect(await interpretCards(input)).toEqual({
@@ -64,11 +64,11 @@ describe("card reading service", () => {
 
   it("does not accept or cache the observed half-sentence as an AI success", async () => {
     const pair = [
-      CARD_CATALOG.find(card => card.nameZh === "岔路")!,
-      CARD_CATALOG.find(card => card.nameZh === "三葉草")!,
+      CARD_CATALOG.find((card) => card.nameZh === "岔路")!,
+      CARD_CATALOG.find((card) => card.nameZh === "三葉草")!,
     ] as const;
     llm.invokeLLM.mockResolvedValue(
-      modelResponse("「岔路」象徵在學習過程中面臨多種研究方向")
+      modelResponse("「岔路」象徵在學習過程中面臨多種研究方向"),
     );
     const result = await interpretCards({
       cards: [...pair],
@@ -93,7 +93,7 @@ describe("card reading service", () => {
         choices: [{ finish_reason: reason, message: { content: text } }],
       });
       expect((await interpretCards(input)).source).toBe("catalog");
-    }
+    },
   );
 
   it("uses an explicitly labeled complete catalog fallback when the LLM fails", async () => {
@@ -109,4 +109,61 @@ describe("card reading service", () => {
     });
     expect(result.text).toContain("not a prediction of the future");
   });
+
+  it.each([
+    {
+      lang: "zh" as const,
+      response:
+        "騎士帶來新的訊息，三葉草提供一個小小的可能。試著畫出你想探索的方向。",
+      guidance: "語氣溫和、尊重",
+      reflection: "可以慢慢觀察、思考選擇或探索成長",
+    },
+    {
+      lang: "en" as const,
+      response:
+        "Rider suggests a new message, while Clover offers a small possibility. Sketch one direction you would like to explore.",
+      guidance: "gentle, respectful tone",
+      reflection: "reflect, consider manageable choices, or explore growth",
+    },
+  ])(
+    "gives accessible, gentle $lang guidance without forcing positivity",
+    async ({ lang, response, guidance, reflection }) => {
+      llm.invokeLLM.mockResolvedValue(modelResponse(response));
+      await interpretCards({
+        cards: [...cards],
+        topic: "study",
+        lang,
+      });
+      const system = llm.invokeLLM.mock.calls[0]![0].messages[0].content;
+      expect(system).toContain(guidance);
+      expect(system).toContain(reflection);
+      expect(system).toContain("2–3");
+      expect(system).toContain(
+        lang === "zh" ? "不要刻意精簡" : "do not shorten the reading",
+      );
+    },
+  );
+
+  it.each([
+    ["zh" as const, "study" as const, "學習", "不必急著下結論"],
+    [
+      "en" as const,
+      "love" as const,
+      "love and relationships",
+      "without needing to decide",
+    ],
+  ])(
+    "keeps the %s catalog fallback specific, reflective, and complete",
+    (lang, topic, topicText, gentleSuggestion) => {
+      const text = catalogReading([...cards], topic, lang);
+      expect(text).toContain(topicText);
+      expect(text).toContain(lang === "zh" ? cards[0].nameZh : cards[0].nameEn);
+      expect(text).toContain(lang === "zh" ? cards[1].nameZh : cards[1].nameEn);
+      expect(text).toContain(gentleSuggestion);
+      expect(text.match(/[。.!?！？]/g) ?? []).toHaveLength(3);
+      expect(text).toContain(
+        lang === "zh" ? "不是對未來的預測" : "not a prediction of the future",
+      );
+    },
+  );
 });
