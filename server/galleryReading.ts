@@ -29,9 +29,9 @@ export function catalogReading(
   const [first, second] = cards;
   const topicText = topicLabel(topic, lang);
   if (lang === "zh") {
-    return `在${topicText}中，把「${first.nameZh}」的${first.keywordsZh}和「${second.nameZh}」的${second.keywordsZh}當作兩個觀察角度：看看它們如何連結到一件具體事情，或帶出不同可能；不必急著下結論。試著從兩張卡各選一個細節做成小型拼貼或速寫，再記下你想多了解的一點。這是符號反思練習，不是對未來的預測。`;
+    return `在${topicText}中，把「${first.nameZh}」的${first.keywordsZh}和「${second.nameZh}」的${second.keywordsZh}當作兩個觀察角度。看看它們如何連結到一件具體事情，或帶出不同可能；不必急著下結論。試著從兩張卡各選一個細節做成小型拼貼或速寫，再記下你想多了解的一點。`;
   }
-  return `For ${topicText}, consider ${first.nameEn}'s ${first.keywordsEn} alongside ${second.nameEn}'s ${second.keywordsEn}; notice how they connect to one concrete situation or suggest different possibilities, without needing to decide right away. Try a small collage or sketch using a detail from both cards, and note one thought or next step you may want to explore. This is a symbolic reflection, not a prediction of the future.`;
+  return `For ${topicText}, consider ${first.nameEn}'s ${first.keywordsEn} alongside ${second.nameEn}'s ${second.keywordsEn}. Notice how they connect to one concrete situation or suggest different possibilities, without needing to decide right away. Try a small collage or sketch using a detail from both cards, and note one thought or next step you may want to explore.`;
 }
 
 export function assertReadingRateLimit(clientKey: string): void {

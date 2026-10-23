@@ -107,7 +107,7 @@ describe("card reading service", () => {
       source: "catalog",
       text: catalogReading([...cards], "daily", "en"),
     });
-    expect(result.text).toContain("not a prediction of the future");
+    expect(result.text).not.toContain("not a prediction of the future");
   });
 
   it.each([
@@ -145,24 +145,32 @@ describe("card reading service", () => {
   );
 
   it.each([
-    ["zh" as const, "study" as const, "學習", "不必急著下結論"],
+    [
+      "zh" as const,
+      "study" as const,
+      "學習",
+      "不必急著下結論",
+      "小型拼貼或速寫",
+    ],
     [
       "en" as const,
       "love" as const,
       "love and relationships",
       "without needing to decide",
+      "small collage or sketch",
     ],
   ])(
     "keeps the %s catalog fallback specific, reflective, and complete",
-    (lang, topic, topicText, gentleSuggestion) => {
+    (lang, topic, topicText, gentleSuggestion, artSuggestion) => {
       const text = catalogReading([...cards], topic, lang);
       expect(text).toContain(topicText);
       expect(text).toContain(lang === "zh" ? cards[0].nameZh : cards[0].nameEn);
       expect(text).toContain(lang === "zh" ? cards[1].nameZh : cards[1].nameEn);
       expect(text).toContain(gentleSuggestion);
+      expect(text).toContain(artSuggestion);
       expect(text.match(/[。.!?！？]/g) ?? []).toHaveLength(3);
-      expect(text).toContain(
-        lang === "zh" ? "不是對未來的預測" : "not a prediction of the future",
+      expect(text).not.toMatch(
+        lang === "zh" ? /不是對未來的預測/ : /not a prediction of the future/,
       );
     },
   );
