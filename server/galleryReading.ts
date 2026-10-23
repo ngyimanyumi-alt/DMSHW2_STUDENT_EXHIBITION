@@ -1,5 +1,6 @@
 import type { CardSeed } from "@shared/cards";
 import { invokeLLM } from "./_core/llm";
+import { READING_ACTIONS } from "./readingGuidance";
 
 export type ReadingTopic = "study" | "love" | "daily";
 export type ReadingLanguage = "zh" | "en";
@@ -9,7 +10,7 @@ const CACHE_MS = 2 * 60 * 1000;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 3;
 const AI_TIMEOUT_MS = 9_000;
-const MAX_READING_LENGTH = 720;
+const MAX_READING_LENGTH = { zh: 240, en: 600 } as const;
 const readingCache = new Map<string, { text: string; expiresAt: number }>();
 const readingAttempts = new Map<string, number[]>();
 
@@ -29,9 +30,13 @@ export function catalogReading(
   const [first, second] = cards;
   const topicText = topicLabel(topic, lang);
   if (lang === "zh") {
-    return `在${topicText}中，把「${first.nameZh}」的${first.keywordsZh}和「${second.nameZh}」的${second.keywordsZh}當作兩個觀察角度。看看它們如何連結到一件具體事情，或帶出不同可能；不必急著下結論。試著從兩張卡各選一個細節做成小型拼貼或速寫，再記下你想多了解的一點。`;
+    const meaning = (card: CardSeed) =>
+      card.keywordsZh.split("、").slice(0, 2).join("與");
+    return `談到${topicText}，可以把「${first.nameZh}」看作${meaning(first)}的提醒，把「${second.nameZh}」看作${meaning(second)}的提醒。可以先${READING_ACTIONS[first.id][topic].zh}。接著${READING_ACTIONS[second.id][topic].zh}。`;
   }
-  return `For ${topicText}, consider ${first.nameEn}'s ${first.keywordsEn} alongside ${second.nameEn}'s ${second.keywordsEn}. Notice how they connect to one concrete situation or suggest different possibilities, without needing to decide right away. Try a small collage or sketch using a detail from both cards, and note one thought or next step you may want to explore.`;
+  const meaning = (card: CardSeed) =>
+    card.keywordsEn.split(",").slice(0, 2).join(" and").toLowerCase();
+  return `For ${topicText}, think of ${first.nameEn} as ${meaning(first)}, and ${second.nameEn} as ${meaning(second)}. Try to ${READING_ACTIONS[first.id][topic].en}. You could also ${READING_ACTIONS[second.id][topic].en}.`;
 }
 
 export function assertReadingRateLimit(clientKey: string): void {
@@ -62,7 +67,7 @@ function cleanModelText(
 ): string | null {
   if (typeof value !== "string") return null;
   const text = value.replace(/\s+/g, " ").trim();
-  if (!text || text.length > MAX_READING_LENGTH) return null;
+  if (!text || text.length > MAX_READING_LENGTH[lang]) return null;
   const normalized = text.toLowerCase();
   if (
     !cards.every((card) =>
@@ -95,8 +100,8 @@ export async function interpretCards(input: {
       : `Card one: ${first.nameEn} (${first.keywordsEn}; ${first.descriptionEn})\nCard two: ${second.nameEn} (${second.keywordsEn}; ${second.descriptionEn})`;
   const system =
     input.lang === "zh"
-      ? "你為學生寫雷諾曼符號練習。只寫 2–3 句繁體中文，使用一般讀者容易理解的自然用語，保留具體解釋和細節，不要刻意精簡。點出兩張卡的具體符號及其與題目的關係，最後一句給一個可嘗試的藝術創作建議。語氣溫和、尊重，不用嚇人、責備、武斷或批判的說法，也不要把解讀寫成必然結果；遇到較具挑戰的象徵時，將它當作可以慢慢觀察、思考選擇或探索成長的提醒，不必將每張卡都解讀為正面。這是符號反思，不是命運或未來預測；不要問候、稱讚、口號、幸運色、免責聲明或提及 AI。"
-      : "Write a Lenormand symbol exercise for students in 2–3 natural, accessible English sentences. Keep the explanation and concrete detail; do not shorten the reading for brevity. Name both cards' concrete symbols and connect them to the topic, then end with a practical art-making suggestion. Use a gentle, respectful tone: avoid frightening, blaming, blunt, deterministic, or judgmental language. Treat challenging symbols as invitations to reflect, consider manageable choices, or explore growth, without making every card meaning unrealistically positive. This is a symbolic reflection, not fate or a prediction of the future. No greeting, praise, slogan, lucky color, disclaimer, or mention of AI.";
+      ? "為學生寫一段雷諾曼卡牌反思。只寫 2–3 句繁體中文，約 80–160 字，用簡短、日常的說法，不堆砌關鍵字。點名兩張卡，簡單說明它們的意涵如何一起回應題目，再給一至兩個今天能嘗試的小步驟，說清楚做甚麼、如何做。建議必須來自這組卡牌和所選主題：學習用於溫習、作業或探索方向；人際用於溝通、關心或界線；日常用於習慣、休息或靈感。不要每次套用相同結尾，不要只叫讀者思考或探索，也不要固定以拼貼或速寫收尾；只有切合題目時才建議創作。語氣溫和、尊重、鼓勵而實際，不用嚇人、責備、武斷或批判的說法。遇到困難的象徵，承認難處並提出可控制的小行動，不保證成功，不猜測別人的心意。這是符號反思，不是命運或未來預測；不用重複免責聲明，不要問候、口號、幸運色或提及 AI。"
+      : "Write a Lenormand card reflection for students in 2–3 short, plain-language English sentences, about 45–85 words. Name both cards and briefly explain how their meanings work together for the topic, then give one or two small steps to try today, saying what to do and how. Ground the advice in this pair and topic: study means revision, assignments or exploring directions; relationships means communication, care or boundaries; daily life means routines, rest or inspiration. Do not reuse a stock ending, merely tell the reader to reflect or explore, or always end with a collage or sketch; suggest art only when relevant. Use a gentle, respectful, encouraging but realistic tone, without frightening, blaming, blunt or judgmental language. Acknowledge difficult symbols and offer manageable actions within the reader's control, without promising success or guessing another person's feelings. This is symbolic reflection, not fate or a prediction of the future; do not repeat a disclaimer. No greeting, slogan, lucky color or mention of AI.";
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
