@@ -44,7 +44,8 @@ export async function saveCardTextOverride(
   await db
     .insert(exhibitionCardOverrides)
     .values(input)
-    .onDuplicateKeyUpdate({
+    .onConflictDoUpdate({
+      target: exhibitionCardOverrides.cardId,
       set: {
         nameZh: input.nameZh,
         nameEn: input.nameEn,
@@ -65,7 +66,8 @@ export async function saveCardMedia(
   await db
     .insert(exhibitionCardOverrides)
     .values({ cardId, ...input })
-    .onDuplicateKeyUpdate({
+    .onConflictDoUpdate({
+      target: exhibitionCardOverrides.cardId,
       set: input,
     });
 }
@@ -89,7 +91,7 @@ export async function saveExhibitionSettings(
   await db
     .insert(exhibitionSettings)
     .values({ id: 1, ...input })
-    .onDuplicateKeyUpdate({ set: input });
+    .onConflictDoUpdate({ target: exhibitionSettings.id, set: input });
 }
 
 export async function getVisibleGuestbookEntries(): Promise<GuestbookEntry[]> {
@@ -115,22 +117,10 @@ export async function addGuestbookEntry(input: {
   photoUrl: string | null;
 }): Promise<GuestbookEntry> {
   const db = await requireDb();
-  const insertResult = await db.insert(guestbookEntries).values({
+  const rows = await db.insert(guestbookEntries).values({
     ...input,
     hidden: false,
-  });
-  const id = Number(
-    (insertResult as unknown as Array<{ insertId?: number }>)[0]?.insertId
-  );
-  if (!Number.isInteger(id) || id < 1) {
-    throw new Error("Guestbook entry was not created");
-  }
-
-  const rows = await db
-    .select()
-    .from(guestbookEntries)
-    .where(eq(guestbookEntries.id, id))
-    .limit(1);
+  }).returning();
   if (!rows[0]) throw new Error("Guestbook entry could not be loaded");
   return rows[0];
 }
