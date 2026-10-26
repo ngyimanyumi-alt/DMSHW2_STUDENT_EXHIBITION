@@ -1,19 +1,19 @@
 {
   "version": "7",
-  "dialect": "mysql",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "5",
-      "when": 1788785580464,
-      "tag": "0000_initial_users",
+      "version": "7",
+      "when": 1793002191016,
+      "tag": "0000_postgresql_initial",
       "breakpoints": true
     },
     {
       "idx": 1,
-      "version": "5",
-      "when": 1792570480523,
-      "tag": "0001_talented_morbius",
+      "version": "7",
+      "when": 1793002191924,
+      "tag": "0001_updated_at",
       "breakpoints": true
     }
   ]
