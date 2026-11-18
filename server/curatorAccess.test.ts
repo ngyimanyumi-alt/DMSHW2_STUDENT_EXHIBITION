@@ -50,7 +50,7 @@ describe("the owner-approved curator authorization policy", () => {
   it("maps permission only after the real authentication layer succeeds", async () => {
     authenticateRequest.mockResolvedValue(baseUser);
     const context = await createContext({
-      req: {} as never,
+      req: { headers: {} } as never,
       res: {} as never,
       info: {} as never,
     });
@@ -60,7 +60,7 @@ describe("the owner-approved curator authorization policy", () => {
   it("keeps the anonymous state when session validation fails", async () => {
     authenticateRequest.mockRejectedValue(new Error("Invalid signed session"));
     const context = await createContext({
-      req: {} as never,
+      req: { headers: {} } as never,
       res: {} as never,
       info: {} as never,
     });

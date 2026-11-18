@@ -1253,6 +1253,16 @@ p {
   font-size: 12px;
   line-height: 1.8;
 }
+.curator-login-form {
+  display: grid;
+  justify-items: center;
+  gap: 15px;
+  width: min(100%, 320px);
+}
+.curator-login-form .field {
+  width: 100%;
+  text-align: left;
+}
 .curator-tabs {
   border-bottom: 1px solid var(--border);
   display: flex;

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
+import { CURATOR_COOKIE, curatorCookieOptions, loginCurator } from "./curatorAuth";
 import {
   ACCEPTED_IMAGE_MIME_TYPES,
   importPublicDriveArtwork,
@@ -146,9 +147,13 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    login: publicProcedure
+      .input(z.object({ password: z.string().min(1).max(1024) }))
+      .mutation(({ ctx, input }) => loginCurator(ctx.req, ctx.res, input.password)),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(CURATOR_COOKIE, curatorCookieOptions());
       return { success: true } as const;
     }),
   }),
@@ -214,7 +219,6 @@ export const appRouter = router({
         knownCard(input.id);
         try {
           const imported = await importPublicDriveArtwork({
-            cardId: input.id,
             url: input.url,
           });
           await saveCardMedia(input.id, {
@@ -238,7 +242,6 @@ export const appRouter = router({
         knownCard(input.id);
         try {
           const uploaded = await uploadArtworkImage({
-            cardId: input.id,
             data: input.data,
             mimeType: input.mimeType,
           });

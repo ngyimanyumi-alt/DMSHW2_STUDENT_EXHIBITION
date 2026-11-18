@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const storage = vi.hoisted(() => ({ storagePut: vi.fn() }));
+const storage = vi.hoisted(() => ({ storeGalleryImage: vi.fn() }));
 vi.mock("./storage", () => storage);
 
 import {
@@ -48,9 +48,8 @@ describe("gallery media safety", () => {
   });
 
   it("downloads only through the fixed Google host then persists verified original bytes", async () => {
-    storage.storagePut.mockResolvedValue({
-      key: "gallery/artwork/1_abcd.png",
-      url: "/manus-storage/gallery/artwork/1_abcd.png",
+    storage.storeGalleryImage.mockResolvedValue({
+      imageUrl: "/api/media/test-image",
     });
     const request = vi.fn().mockResolvedValue(
       new Response(png, {
@@ -61,7 +60,6 @@ describe("gallery media safety", () => {
     vi.stubGlobal("fetch", request);
 
     const output = await importPublicDriveArtwork({
-      cardId: 1,
       url: "https://drive.google.com/uc?id=abcdefghij_123",
     });
 
@@ -70,13 +68,12 @@ describe("gallery media safety", () => {
     expect(url.hostname).toBe("drive.usercontent.google.com");
     expect(url.searchParams.get("id")).toBe("abcdefghij_123");
     expect(init.redirect).toBe("error");
-    expect(storage.storagePut).toHaveBeenCalledWith(
-      "gallery/artwork/1.png",
-      expect.any(Buffer),
+    expect(storage.storeGalleryImage).toHaveBeenCalledWith(
+      Buffer.from(png),
       "image/png",
     );
     expect(output).toEqual({
-      imageUrl: "/manus-storage/gallery/artwork/1_abcd.png",
+      imageUrl: "/api/media/test-image",
       driveUrl: "https://drive.google.com/uc?id=abcdefghij_123",
     });
   });
@@ -89,10 +86,18 @@ describe("gallery media safety", () => {
 
     await expect(
       importPublicDriveArtwork({
-        cardId: 1,
         url: "https://drive.google.com/open?id=abcdefghij_123",
       }),
     ).rejects.toThrow(/Unable to download a public Google Drive image/);
-    expect(storage.storagePut).not.toHaveBeenCalled();
+    expect(storage.storeGalleryImage).not.toHaveBeenCalled();
+  });
+
+  it("accepts images at the 8 MiB boundary without overflowing the base64 matcher", () => {
+    const max = 8 * 1024 * 1024;
+    const data = Buffer.alloc(max);
+    data.set(png);
+    const encoded = data.toString("base64");
+    expect(decodeBase64Image(encoded, "image/png", max).bytes.length).toBe(max);
+    expect(() => decodeBase64Image(encoded, "image/png", max - 1)).toThrow();
   });
 });

@@ -1,4 +1,15 @@
-import { boolean, integer, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, customType, integer, pgEnum, pgTable, serial, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+export const galleryMedia = pgTable("gallery_media", {
+  id: uuid("id").primaryKey(),
+  mimeType: varchar("mimeType", { length: 32 }).notNull(),
+  data: bytea("data").notNull(),
+  createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const userRole = pgEnum("user_role", ["user", "admin"]);
 
