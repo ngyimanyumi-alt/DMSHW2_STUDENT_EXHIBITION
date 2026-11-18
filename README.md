@@ -21,11 +21,10 @@ guestbook and exhibition requests fail; there is no local-file fallback.
 3. For a native Node service, use `corepack enable && pnpm install --frozen-lockfile && pnpm build`
    as the build command and `pnpm start` as the start command. The included
    Dockerfile is also supported.
-4. Set the **Pre-Deploy Command** to `pnpm db:migrate` so the checked-in migrations
-   run before the new version serves requests. If your Render plan does not
-   support pre-deploy commands, run `pnpm db:migrate` once from a Render shell or
-   one-off job with the same private environment before starting/redeploying.
-   The Docker image includes the migration files and CLI.
+4. The service applies checked-in migrations automatically at startup, before it
+   accepts requests. The Render database user must have permission to create
+   tables and the Drizzle migration schema. You may also run `pnpm db:migrate`
+   manually as a one-off operation; no Render Pre-Deploy Command is required.
 5. Deploy and check that exhibition content loads and guestbook messages can be
    submitted and listed. Follow the curator setup below before using `/curator`.
 
@@ -52,11 +51,8 @@ In the Render Web Service's **Environment** settings, add these private values:
 - `CURATOR_SESSION_SECRET`: a separate random value with at least 32 characters.
   Generate it privately with `openssl rand -hex 32`. Do not reuse the password.
 
-Save and redeploy after applying `pnpm db:migrate`. If your Render tier has no
-Pre-Deploy Command, temporarily use `pnpm db:migrate && pnpm start` as the native
-service's Start Command, then revert to `pnpm start` after the migration succeeds.
-For Docker without a Pre-Deploy Command, the same command can be used as the
-Docker Command override.
+Save and redeploy. The service applies the media migration automatically before
+it begins serving requests.
 
 Curator sign-in, artwork uploads (including Google Drive imports), and guestbook
 photos no longer require Manus settings. New images are stored in PostgreSQL and
