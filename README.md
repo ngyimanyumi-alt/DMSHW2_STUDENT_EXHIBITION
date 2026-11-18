@@ -27,8 +27,7 @@ guestbook and exhibition requests fail; there is no local-file fallback.
    one-off job with the same private environment before starting/redeploying.
    The Docker image includes the migration files and CLI.
 5. Deploy and check that exhibition content loads and guestbook messages can be
-   submitted and listed. Database configuration does not replace other required
-   authentication or media-storage environment settings.
+   submitted and listed. Follow the curator setup below before using `/curator`.
 
 Migrations now target a **fresh PostgreSQL database**, not an existing MySQL
 database. The old MySQL migration history has been replaced; this is not an
@@ -44,6 +43,27 @@ Timestamp update triggers are in `drizzle/0001_updated_at.sql` and preserve
 automatic `updatedAt` updates, including direct SQL updates. Timestamps use
 PostgreSQL `timestamptz` and are returned as JavaScript `Date` values.
 
+### Curator access and image uploads on Render
+
+In the Render Web Service's **Environment** settings, add these private values:
+
+- `CURATOR_PASSWORD`: a unique password with at least 16 characters, used to
+  sign in at `/curator`.
+- `CURATOR_SESSION_SECRET`: a separate random value with at least 32 characters.
+  Generate it privately with `openssl rand -hex 32`. Do not reuse the password.
+
+Save and redeploy after applying `pnpm db:migrate`. If your Render tier has no
+Pre-Deploy Command, temporarily use `pnpm db:migrate && pnpm start` as the native
+service's Start Command, then revert to `pnpm start` after the migration succeeds.
+For Docker without a Pre-Deploy Command, the same command can be used as the
+Docker Command override.
+
+Curator sign-in, artwork uploads (including Google Drive imports), and guestbook
+photos no longer require Manus settings. New images are stored in PostgreSQL and
+served under `/api/media/`; include them in your database backups. Existing
+`/manus-storage/` URLs are not copied by the migration. If an old artwork no longer
+loads on Render, re-upload it or re-import its original Drive link in the studio.
+
 ### Database tests
 
 Run server tests with `pnpm test --root . server`. PostgreSQL integration tests
@@ -56,6 +76,6 @@ that schema afterward. Do not use your production database for tests.
 
 Start with the Webdev skill's default-template guide. Platform login, storage, payments and service contracts live in its shared references; read the relevant capability before extending its helper.
 
-`server/_core/publicConfig.ts` exposes only named public runtime values. Private keys stay server-side. The platform serves managed `/manus-storage/` assets; the application does not register a second proxy.
+`server/_core/publicConfig.ts` exposes only named public runtime values. Private keys stay server-side. The Manus platform serves legacy `/manus-storage/` assets when hosted there; Render does not proxy those assets.
 
 Platform configuration is readable and editable through `webdev.config`. Default settings are initial values, not enforced constraints. The agent may modify the files, commands and configuration or follow the flexible guide for another stack.

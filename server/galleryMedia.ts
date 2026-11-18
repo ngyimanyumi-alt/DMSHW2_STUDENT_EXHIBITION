@@ -1,4 +1,4 @@
-import { storagePut } from "./storage";
+import { storeGalleryImage } from "./storage";
 
 export const ACCEPTED_IMAGE_MIME_TYPES = [
   "image/jpeg",
@@ -56,18 +56,12 @@ function detectedImageMimeType(
   }
   if (
     bytes.length >= 12 &&
-    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
-    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+    String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) === "RIFF" &&
+    String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]) === "WEBP"
   ) {
     return "image/webp";
   }
   return null;
-}
-
-function extensionFor(mimeType: AcceptedImageMimeType): "jpg" | "png" | "webp" {
-  if (mimeType === "image/jpeg") return "jpg";
-  if (mimeType === "image/png") return "png";
-  return "webp";
 }
 
 export function decodeBase64Image(
@@ -79,9 +73,8 @@ export function decodeBase64Image(
   if (
     !data ||
     data.length > maxBase64Length ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-      data
-    )
+    data.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(data)
   ) {
     throw imageError();
   }
@@ -94,22 +87,7 @@ export function decodeBase64Image(
   return { bytes, mimeType: actualMimeType };
 }
 
-async function putImage(
-  prefix: "artwork" | "guestbook",
-  id: number | string,
-  bytes: Buffer,
-  mimeType: AcceptedImageMimeType
-): Promise<{ imageUrl: string }> {
-  const object = await storagePut(
-    `gallery/${prefix}/${id}.${extensionFor(mimeType)}`,
-    bytes,
-    mimeType
-  );
-  return { imageUrl: object.url };
-}
-
 export async function uploadArtworkImage(input: {
-  cardId: number;
   data: string;
   mimeType: AcceptedImageMimeType;
 }): Promise<{ imageUrl: string }> {
@@ -118,7 +96,7 @@ export async function uploadArtworkImage(input: {
     input.mimeType,
     MAX_ARTWORK_BYTES
   );
-  return putImage("artwork", input.cardId, image.bytes, image.mimeType);
+  return storeGalleryImage(image.bytes, image.mimeType);
 }
 
 export async function uploadGuestbookPhoto(input: {
@@ -130,12 +108,7 @@ export async function uploadGuestbookPhoto(input: {
     input.mimeType,
     MAX_GUESTBOOK_PHOTO_BYTES
   );
-  return putImage(
-    "guestbook",
-    crypto.randomUUID(),
-    image.bytes,
-    image.mimeType
-  );
+  return storeGalleryImage(image.bytes, image.mimeType);
 }
 
 export type PublicDriveFile = {
@@ -236,7 +209,6 @@ async function readResponseAtMost(
 }
 
 export async function importPublicDriveArtwork(input: {
-  cardId: number;
   url: string;
 }): Promise<{ imageUrl: string; driveUrl: string }> {
   const driveFile = parsePublicDriveUrl(input.url);
@@ -260,7 +232,7 @@ export async function importPublicDriveArtwork(input: {
 
   const mimeType = detectedImageMimeType(bytes);
   if (!mimeType) throw driveError();
-  const stored = await putImage("artwork", input.cardId, bytes, mimeType);
+  const stored = await storeGalleryImage(bytes, mimeType);
   return { ...stored, driveUrl: driveFile.sourceUrl };
 }
 

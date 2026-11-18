@@ -9,7 +9,6 @@ import {
   LogOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { startLogin } from "@/const";
 import { CardArtwork } from "@/components/CardArtwork";
 import {
   COPY,
@@ -42,6 +41,19 @@ export default function Curator({
   });
   const [tab, setTab] = useState<"works" | "text" | "guest">("works");
   const [loginError, setLoginError] = useState("");
+  const [password, setPassword] = useState("");
+  const login = trpc.auth.login.useMutation({
+    gcTime: 0,
+    onSuccess: async () => {
+      setPassword("");
+      setLoginError("");
+      await utils.auth.me.invalidate();
+    },
+    onError: error => setLoginError(error.message),
+    onSettled: (): void => {
+      login.reset();
+    },
+  });
   if (auth.isLoading)
     return (
       <div className="empty-state">
@@ -56,25 +68,39 @@ export default function Curator({
         <p className="eyebrow">CURATOR ACCESS</p>
         <h1>{copy.manageTitle}</h1>
         <p>{auth.data ? copy.denied : copy.loginNote}</p>
-        {loginError && <p className="inline-error">{loginError}</p>}
-        <button
-          className="button button-dark"
-          onClick={() => {
-            if (auth.data) void logout.mutateAsync();
-            else {
-              try {
-                startLogin();
-              } catch (error) {
-                setLoginError(
-                  error instanceof Error ? error.message : copy.loadError
-                );
-              }
-            }
-          }}
-        >
-          {auth.data ? copy.logout : copy.login}
-          <ArrowRight size={16} />
-        </button>
+        {auth.error && <p className="inline-error" role="alert">{copy.loadError}</p>}
+        {loginError && <p className="inline-error" role="alert">{loginError}</p>}
+        {auth.data ? (
+          <button className="button button-dark" onClick={() => logout.mutate()} disabled={logout.isPending}>
+            {copy.logout}<ArrowRight size={16} />
+          </button>
+        ) : (
+          <form
+            className="curator-login-form"
+            onSubmit={event => {
+              event.preventDefault();
+              setLoginError("");
+              login.mutate({ password });
+            }}
+          >
+            <label className="field">
+              <span>{copy.curatorPassword}</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                maxLength={1024}
+                required
+                disabled={login.isPending}
+              />
+            </label>
+            <button className="button button-dark" disabled={login.isPending}>
+              {login.isPending ? copy.signingIn : copy.login}
+              <ArrowRight size={16} />
+            </button>
+          </form>
+        )}
       </section>
     );
   return (

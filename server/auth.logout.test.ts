@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import { COOKIE_NAME } from "../shared/const";
 import type { TrpcContext } from "./_core/context";
+import { CURATOR_COOKIE } from "./curatorAuth";
 
 type CookieCall = {
   name: string;
@@ -49,13 +50,19 @@ describe("auth.logout", () => {
     const result = await caller.auth.logout();
 
     expect(result).toEqual({ success: true });
-    expect(clearedCookies).toHaveLength(1);
+    expect(clearedCookies).toHaveLength(2);
     expect(clearedCookies[0]?.name).toBe(COOKIE_NAME);
     expect(clearedCookies[0]?.options).toMatchObject({
       maxAge: -1,
       secure: true,
       sameSite: "none",
       httpOnly: true,
+      path: "/",
+    });
+    expect(clearedCookies[1]?.name).toBe(CURATOR_COOKIE);
+    expect(clearedCookies[1]?.options).toMatchObject({
+      httpOnly: true,
+      sameSite: "strict",
       path: "/",
     });
   });
