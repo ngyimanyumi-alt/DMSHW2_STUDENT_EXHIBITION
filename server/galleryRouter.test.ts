@@ -35,7 +35,10 @@ import { appRouter } from "./routers";
 
 const createdAt = new Date("2026-10-21T00:00:00.000Z");
 
-function context(role: "admin" | "user" | null, ip = `test-${Math.random()}`): TrpcContext {
+function context(
+  role: "admin" | "user" | null,
+  ip = `test-${Math.random()}`,
+): TrpcContext {
   return {
     user: role
       ? {
@@ -69,13 +72,20 @@ beforeEach(() => {
     hidden: false,
     createdAt,
   });
-  media.uploadArtworkImage.mockResolvedValue({ imageUrl: "/manus-storage/art.png" });
-  media.uploadGuestbookPhoto.mockResolvedValue({ imageUrl: "/manus-storage/guest.png" });
+  media.uploadArtworkImage.mockResolvedValue({
+    imageUrl: "/manus-storage/art.png",
+  });
+  media.uploadGuestbookPhoto.mockResolvedValue({
+    imageUrl: "/manus-storage/guest.png",
+  });
   media.importPublicDriveArtwork.mockResolvedValue({
     imageUrl: "/manus-storage/drive.png",
     driveUrl: "https://drive.google.com/file/d/abcdefghij/view",
   });
-  reading.interpretCards.mockResolvedValue({ text: "A symbolic prompt.", source: "ai" });
+  reading.interpretCards.mockResolvedValue({
+    text: "A symbolic prompt.",
+    source: "ai",
+  });
 });
 
 describe("gallery tRPC contract", () => {
@@ -96,7 +106,9 @@ describe("gallery tRPC contract", () => {
       },
     ]);
 
-    const cards = await appRouter.createCaller(context(null)).exhibition.cards();
+    const cards = await appRouter
+      .createCaller(context(null))
+      .exhibition.cards();
 
     expect(cards).toHaveLength(CARD_CATALOG.length);
     expect(cards[0]).toMatchObject({
@@ -121,7 +133,9 @@ describe("gallery tRPC contract", () => {
       },
     ]);
 
-    const entries = await appRouter.createCaller(context(null)).guestbook.list();
+    const entries = await appRouter
+      .createCaller(context(null))
+      .guestbook.list();
 
     expect(entries).toEqual([
       {
@@ -200,7 +214,11 @@ describe("gallery tRPC contract", () => {
       caller.guestbook.add({ name: " ", message: "A message" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(
-      caller.guestbook.add({ name: "Visitor", message: "A message", website: "bot" }),
+      caller.guestbook.add({
+        name: "Visitor",
+        message: "A message",
+        website: "bot",
+      }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(repository.addGuestbookEntry).not.toHaveBeenCalled();
 
@@ -222,6 +240,29 @@ describe("gallery tRPC contract", () => {
     expect(entry).toMatchObject({ id: 9, hidden: false });
   });
 
+  it("logs the database error while keeping internal details out of the public response", async () => {
+    const failure = new Error("relation guestbook_entries does not exist");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    repository.addGuestbookEntry.mockRejectedValueOnce(failure);
+    try {
+      await expect(
+        appRouter.createCaller(context(null)).guestbook.add({
+          name: "Visitor",
+          message: "A message",
+        }),
+      ).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          "儲存變更失敗，請稍後再試。／Unable to save changes; please try again later.",
+      });
+      expect(log).toHaveBeenCalledWith(
+        "[Persistence] guestbook.add failed: Error: relation guestbook_entries does not exist",
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("requires two distinct known cards before attempting a public reading", async () => {
     const caller = appRouter.createCaller(context(null));
 
@@ -229,7 +270,11 @@ describe("gallery tRPC contract", () => {
       caller.reading.interpret({ cardIds: [1, 1], topic: "study", lang: "zh" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(
-      caller.reading.interpret({ cardIds: [1, 37], topic: "study", lang: "zh" }),
+      caller.reading.interpret({
+        cardIds: [1, 37],
+        topic: "study",
+        lang: "zh",
+      }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(reading.interpretCards).not.toHaveBeenCalled();
 

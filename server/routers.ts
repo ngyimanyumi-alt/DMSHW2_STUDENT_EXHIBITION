@@ -5,7 +5,11 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
-import { CURATOR_COOKIE, curatorCookieOptions, loginCurator } from "./curatorAuth";
+import {
+  CURATOR_COOKIE,
+  curatorCookieOptions,
+  loginCurator,
+} from "./curatorAuth";
 import {
   ACCEPTED_IMAGE_MIME_TYPES,
   importPublicDriveArtwork,
@@ -40,7 +44,7 @@ const DEFAULT_SETTINGS = {
     "Beginning with Lenormand symbols, students explore observation, AI imagery, and visual experimentation in art class.",
 } as const;
 
-const cardIds = new Set(CARD_CATALOG.map(card => card.id));
+const cardIds = new Set(CARD_CATALOG.map((card) => card.id));
 const imageMimeType = z.enum(ACCEPTED_IMAGE_MIME_TYPES);
 const cardIdInput = z.number().int().min(1).max(36);
 const cardTextInput = z.object({
@@ -73,7 +77,7 @@ const GUESTBOOK_WINDOW_MS = 10 * 60 * 1000;
 const GUESTBOOK_MAX_REQUESTS = 3;
 
 function knownCard(id: number): CardSeed {
-  const card = CARD_CATALOG.find(candidate => candidate.id === id);
+  const card = CARD_CATALOG.find((candidate) => candidate.id === id);
   if (!card || !cardIds.has(id)) {
     throw new TRPCError({
       code: "BAD_REQUEST",
@@ -93,7 +97,7 @@ function clientKey(req: {
 function checkGuestbookRateLimit(key: string): void {
   const now = Date.now();
   const recent = (guestbookAttempts.get(key) ?? []).filter(
-    at => now - at < GUESTBOOK_WINDOW_MS
+    (at) => now - at < GUESTBOOK_WINDOW_MS,
   );
   if (recent.length >= GUESTBOOK_MAX_REQUESTS) {
     guestbookAttempts.set(key, recent);
@@ -106,7 +110,14 @@ function checkGuestbookRateLimit(key: string): void {
   guestbookAttempts.set(key, recent);
 }
 
-function mediaError(error: unknown): never {
+function logPersistenceFailure(operation: string, error: unknown): void {
+  const detail =
+    error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  console.error(`[Persistence] ${operation} failed: ${detail.slice(0, 1000)}`);
+}
+
+function mediaError(error: unknown, operation: string): never {
+  logPersistenceFailure(operation, error);
   if (isGalleryMediaError(error)) {
     throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
   }
@@ -117,7 +128,8 @@ function mediaError(error: unknown): never {
   });
 }
 
-function persistenceError(): never {
+function persistenceError(operation: string, error: unknown): never {
+  logPersistenceFailure(operation, error);
   throw new TRPCError({
     code: "INTERNAL_SERVER_ERROR",
     message:
@@ -146,10 +158,12 @@ function guestbookOutput(entry: {
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query((opts) => opts.ctx.user),
     login: publicProcedure
       .input(z.object({ password: z.string().min(1).max(1024) }))
-      .mutation(({ ctx, input }) => loginCurator(ctx.req, ctx.res, input.password)),
+      .mutation(({ ctx, input }) =>
+        loginCurator(ctx.req, ctx.res, input.password),
+      ),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -161,9 +175,9 @@ export const appRouter = router({
     cards: publicProcedure.query(async () => {
       const overrides = await getCardOverrides();
       const byCardId = new Map(
-        overrides.map(override => [override.cardId, override])
+        overrides.map((override) => [override.cardId, override]),
       );
-      return CARD_CATALOG.map(card => {
+      return CARD_CATALOG.map((card) => {
         const override = byCardId.get(card.id);
         return {
           ...card,
@@ -196,8 +210,8 @@ export const appRouter = router({
         const { id, ...cardText } = input;
         try {
           await saveCardTextOverride({ cardId: id, ...cardText });
-        } catch {
-          persistenceError();
+        } catch (error) {
+          persistenceError("exhibition.saveCard", error);
         }
         return { success: true } as const;
       }),
@@ -206,14 +220,14 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         try {
           await saveExhibitionSettings(input);
-        } catch {
-          persistenceError();
+        } catch (error) {
+          persistenceError("exhibition.saveSettings", error);
         }
         return { success: true } as const;
       }),
     importDrive: adminProcedure
       .input(
-        z.object({ id: cardIdInput, url: z.string().trim().min(1).max(2_048) })
+        z.object({ id: cardIdInput, url: z.string().trim().min(1).max(2_048) }),
       )
       .mutation(async ({ input }) => {
         knownCard(input.id);
@@ -227,7 +241,7 @@ export const appRouter = router({
           });
           return { imageUrl: imported.imageUrl };
         } catch (error) {
-          mediaError(error);
+          mediaError(error, "exhibition.importDrive");
         }
       }),
     uploadArtwork: adminProcedure
@@ -236,7 +250,7 @@ export const appRouter = router({
           id: cardIdInput,
           data: z.string().min(1),
           mimeType: imageMimeType,
-        })
+        }),
       )
       .mutation(async ({ input }) => {
         knownCard(input.id);
@@ -251,16 +265,16 @@ export const appRouter = router({
           });
           return { imageUrl: uploaded.imageUrl };
         } catch (error) {
-          mediaError(error);
+          mediaError(error, "exhibition.uploadArtwork");
         }
       }),
   }),
   guestbook: router({
     list: publicProcedure.query(async () =>
-      (await getVisibleGuestbookEntries()).map(guestbookOutput)
+      (await getVisibleGuestbookEntries()).map(guestbookOutput),
     ),
     adminList: adminProcedure.query(async () =>
-      (await getAllGuestbookEntries()).map(guestbookOutput)
+      (await getAllGuestbookEntries()).map(guestbookOutput),
     ),
     add: publicProcedure
       .input(guestbookInput)
@@ -283,7 +297,7 @@ export const appRouter = router({
               })
             ).imageUrl;
           } catch (error) {
-            mediaError(error);
+            mediaError(error, "guestbook.uploadPhoto");
           }
         }
         try {
@@ -292,10 +306,10 @@ export const appRouter = router({
               name: input.name,
               message: input.message,
               photoUrl,
-            })
+            }),
           );
-        } catch {
-          persistenceError();
+        } catch (error) {
+          persistenceError("guestbook.add", error);
         }
       }),
     moderate: adminProcedure
@@ -303,8 +317,8 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         try {
           await setGuestbookEntryHidden(input.id, input.hidden);
-        } catch {
-          persistenceError();
+        } catch (error) {
+          persistenceError("guestbook.moderate", error);
         }
         return { id: input.id, hidden: input.hidden };
       }),
@@ -317,11 +331,11 @@ export const appRouter = router({
             .tuple([cardIdInput, cardIdInput])
             .refine(
               ([first, second]) => first !== second,
-              "Choose two different cards."
+              "Choose two different cards.",
             ),
           topic: z.enum(["study", "love", "daily"]),
           lang: z.enum(["zh", "en"]),
-        })
+        }),
       )
       .mutation(async ({ ctx, input }) => {
         const cards: [CardSeed, CardSeed] = [
