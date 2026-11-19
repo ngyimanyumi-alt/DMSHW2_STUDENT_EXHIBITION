@@ -13,6 +13,7 @@ import { CardArtwork } from "@/components/CardArtwork";
 import {
   COPY,
   formatDate,
+  getDisplayImageUrl,
   readImage,
   type ExhibitionSettings,
   type GalleryCard,
@@ -543,7 +544,9 @@ function GuestbookManager({ lang }: { lang: Language }) {
             className={`moderation-entry ${entry.hidden ? "hidden-entry" : ""}`}
             key={entry.id}
           >
-            {entry.photoUrl && <img src={entry.photoUrl} alt={entry.name} />}
+            {entry.photoUrl && (
+              <img src={getDisplayImageUrl(entry.photoUrl)} alt={entry.name} />
+            )}
             <div>
               <strong>{entry.name}</strong>
               <time>{formatDate(entry.createdAt, lang)}</time>
