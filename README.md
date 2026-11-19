@@ -4,74 +4,65 @@ React / Express / tRPC / Drizzle starter, adapted from the Sandbox web-db-user t
 
 - `pnpm dev`: development server; honors `PORT` (default 3000).
 - `pnpm build` / `pnpm start`: build and serve `dist/index.js` and `dist/public/`.
-- `pnpm db:migrate`: apply checked-in migrations. `pnpm db:push`: generate and apply new schema changes.
 - `pnpm check` / `pnpm test`: types and application tests.
 
-## PostgreSQL and Render deployment
+## Google Drive and Sheets storage
 
-The API requires PostgreSQL and a private `DATABASE_URL` (`postgresql://` or
-`postgres://`). Without a configured, reachable database and applied migrations,
-guestbook and exhibition requests fail; there is no local-file fallback.
+Exhibition edits, settings and guestbook entries are stored in Google Sheets.
+Artwork uploads and guestbook photos are stored in a Google Drive folder. The
+image files are shared with **Anyone with the link** so the public exhibition
+can display them. Do not upload private images.
 
-1. Create **Render PostgreSQL** in the same region as your Render **Web Service**
-   (a Static Site alone cannot run this Express API).
-2. In the Web Service's **Environment** settings, set `DATABASE_URL` to the
-   database's **Internal Database URL**. Keep the full URL private: it contains
-   credentials. Do not commit it, put it in a `VITE_` variable, or paste it into logs.
-3. For a native Node service, use `corepack enable && pnpm install --frozen-lockfile && pnpm build`
-   as the build command and `pnpm start` as the start command. The included
-   Dockerfile is also supported.
-4. The service applies checked-in migrations automatically at startup, before it
-   accepts requests. The Render database user must have permission to create
-   tables and the Drizzle migration schema. You may also run `pnpm db:migrate`
-   manually as a one-off operation; no Render Pre-Deploy Command is required.
-5. Deploy and check that exhibition content loads and guestbook messages can be
-   submitted and listed. Follow the curator setup below before using `/curator`.
+The site calls a Google Apps Script web app that runs as the spreadsheet owner.
+No `DATABASE_URL` is needed for gallery storage. The optional `DATABASE_URL`
+setting is only used by the legacy Manus OAuth user flow.
 
-Migrations now target a **fresh PostgreSQL database**, not an existing MySQL
-database. The old MySQL migration history has been replaced; this is not an
-in-place conversion or data transfer. Back up any existing MySQL data and plan
-a separate import (including resetting PostgreSQL ID sequences after importing
-explicit IDs). Do not reuse MySQL migration metadata.
+### Configure Google storage
 
-`pnpm db:migrate` only applies pending checked-in migrations and is safe to rerun.
-For future schema changes, run `pnpm exec drizzle-kit generate`, review and commit
-the SQL and metadata, then apply migrations. `pnpm db:push` retains the existing
-generate-and-migrate shortcut; do not use generation as a production deploy step.
-Timestamp update triggers are in `drizzle/0001_updated_at.sql` and preserve
-automatic `updatedAt` updates, including direct SQL updates. Timestamps use
-PostgreSQL `timestamptz` and are returned as JavaScript `Date` values.
+1. Create a Google spreadsheet for gallery data.
+2. In that spreadsheet, choose **Extensions → Apps Script**. Replace the
+   contents of `Code.gs` with `google-apps-script/Code.gs` from this repository
+   and save.
+3. Run `setupGalleryStorage` once from the Apps Script editor and approve the
+   requested Google Sheets and Drive permissions. It creates the data tabs and
+   a `Lenormand Gallery Images` folder in your Drive.
+4. In Apps Script, open **Project Settings → Script properties** and add
+   `API_SECRET` with a private random value of at least 32 characters.
+5. Choose **Deploy → New deployment → Web app**. Set **Execute as** to **Me**
+   and **Who has access** to **Anyone**, then deploy and authorize it. Copy the
+   Web app URL ending in `/exec`.
+6. In the web host's private environment settings, add:
+   - `GOOGLE_APPS_SCRIPT_URL`: the Web app URL.
+   - `GOOGLE_APPS_SCRIPT_SECRET`: the exact same value as `API_SECRET`.
+   - `CURATOR_PASSWORD`: a unique password with at least 16 characters.
+   - `CURATOR_SESSION_SECRET`: a separate random value with at least 32
+     characters.
+7. Save the environment settings and redeploy. The curator studio is available
+   at `/curator`.
 
-### Curator access and image uploads on Render
+To deploy the web app on Render, use **New → Blueprint** and select this
+repository. Render detects `render.yaml`, creates a free Web Service, and asks
+you to supply the four secret environment values above. A free service can sleep
+when idle and may have monthly usage limits; check Render's current plan terms.
 
-In the Render Web Service's **Environment** settings, add these private values:
+Keep the Apps Script secret and curator credentials private; do not commit them
+to GitHub or include them in screenshots. If you change the Apps Script code,
+create a new deployment version and update the web app deployment.
 
-- `CURATOR_PASSWORD`: a unique password with at least 16 characters, used to
-  sign in at `/curator`.
-- `CURATOR_SESSION_SECRET`: a separate random value with at least 32 characters.
-  Generate it privately with `openssl rand -hex 32`. Do not reuse the password.
+Google Drive and Apps Script have storage and usage quotas. This setup avoids a
+paid PostgreSQL database, but it does not guarantee that the hosting service or
+all Google usage will remain free. Check the current limits and pricing for the
+Google account and hosting plan you choose. Back up the spreadsheet and Drive
+folder separately.
 
-Save and redeploy. The service applies the media migration automatically before
-it begins serving requests.
+### Local development
 
-Curator sign-in, artwork uploads (including Google Drive imports), and guestbook
-photos no longer require Manus settings. New images are stored in PostgreSQL and
-served under `/api/media/`; include them in your database backups. Existing
-`/manus-storage/` URLs are not copied by the migration. If an old artwork no longer
-loads on Render, re-upload it or re-import its original Drive link in the studio.
+Set `GOOGLE_APPS_SCRIPT_URL` and `GOOGLE_APPS_SCRIPT_SECRET` in the server
+environment to use the same Google storage. Without them, the app can start in
+development, but gallery and guestbook persistence requests will fail explicitly.
 
 ### Database tests
 
 Run server tests with `pnpm test --root . server`. PostgreSQL integration tests
-are skipped unless `TEST_DATABASE_URL` points to a disposable PostgreSQL database.
-For example, set it privately in your shell and run
-`pnpm test --root . server/postgres.integration.test.ts`.
-The test account needs permission to create/drop schemas; tests apply the actual
-migrations twice in a uniquely named schema, exercise persistence, and remove
-that schema afterward. Do not use your production database for tests.
-
-Start with the Webdev skill's default-template guide. Platform login, storage, payments and service contracts live in its shared references; read the relevant capability before extending its helper.
-
-`server/_core/publicConfig.ts` exposes only named public runtime values. Private keys stay server-side. The Manus platform serves legacy `/manus-storage/` assets when hosted there; Render does not proxy those assets.
-
-Platform configuration is readable and editable through `webdev.config`. Default settings are initial values, not enforced constraints. The agent may modify the files, commands and configuration or follow the flexible guide for another stack.
+are skipped unless `TEST_DATABASE_URL` points to a disposable PostgreSQL
+database. Do not use a production database for tests.
