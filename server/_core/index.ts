@@ -7,17 +7,19 @@ import { publicPlatformScript } from "./publicConfig";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { registerMediaRoutes } from "../storage";
 import { migrateDatabase } from "../db";
 
 async function startServer() {
   if (process.env.DATABASE_URL) {
     await migrateDatabase();
-  } else if (process.env.NODE_ENV === "production") {
-    throw new Error("DATABASE_URL is required in production");
-  } else {
-    console.warn(
-      "[Database] DATABASE_URL is not set; database features are unavailable",
+  }
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!process.env.GOOGLE_APPS_SCRIPT_URL ||
+      !process.env.GOOGLE_APPS_SCRIPT_SECRET)
+  ) {
+    throw new Error(
+      "GOOGLE_APPS_SCRIPT_URL and GOOGLE_APPS_SCRIPT_SECRET are required in production",
     );
   }
   const app = express();
@@ -33,7 +35,6 @@ async function startServer() {
       .send(publicPlatformScript());
   });
   registerOAuthRoutes(app);
-  registerMediaRoutes(app);
   // tRPC API
   app.use(
     "/api/trpc",

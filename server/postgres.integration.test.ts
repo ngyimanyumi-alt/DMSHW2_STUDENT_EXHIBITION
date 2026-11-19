@@ -1,17 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
-import type { AddressInfo } from "node:net";
-import express from "express";
-import { createTRPCClient, httpLink } from "@trpc/client";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import superjson from "superjson";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getDb, getUserByOpenId, migrateDatabase, upsertUser } from "./db";
 import * as repository from "./galleryRepository";
-import { appRouter } from "./routers";
-import { createContext } from "./_core/context";
-import { registerMediaRoutes } from "./storage";
 
 const testUrl = process.env.TEST_DATABASE_URL;
 
@@ -181,93 +172,5 @@ describe.skipIf(!testUrl)("PostgreSQL persistence and migrations", () => {
     const rows =
       await db.$client`SELECT count(*)::int AS count FROM exhibition_settings`;
     expect(rows[0]!.count).toBe(1);
-  });
-
-  it("signs in without Manus, uploads an artwork, and serves the saved bytes", async () => {
-    vi.stubEnv("CURATOR_PASSWORD", "test-curator-password");
-    vi.stubEnv(
-      "CURATOR_SESSION_SECRET",
-      "test-only-signing-secret-not-for-production",
-    );
-    vi.stubEnv("MANUS_PROJECT_ID", "");
-    vi.stubEnv("MANUS_JWT_SECRET", "");
-    vi.stubEnv("MANUS_API_URL", "");
-    vi.stubEnv("MANUS_API_KEY", "");
-
-    const app = express();
-    app.use(express.json({ limit: "12mb" }));
-    registerMediaRoutes(app);
-    app.use(
-      "/api/trpc",
-      createExpressMiddleware({ router: appRouter, createContext }),
-    );
-    const server = app.listen(0, "127.0.0.1");
-    try {
-      await once(server, "listening");
-      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      let cookie = "";
-      const client = createTRPCClient<typeof appRouter>({
-        links: [
-          httpLink({
-            url: `${base}/api/trpc`,
-            transformer: superjson,
-            headers: () => ({ origin: base, cookie }),
-            async fetch(input, init) {
-              const response = await fetch(input, init);
-              const session = response.headers
-                .getSetCookie()
-                .find((value) => value.startsWith("curator_session="));
-              if (session) cookie = session.split(";")[0] ?? "";
-              return response;
-            },
-          }),
-        ],
-      });
-      const image = Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEi0AAAAASUVORK5CYII=",
-        "base64",
-      );
-      const input = {
-        id: 2,
-        data: image.toString("base64"),
-        mimeType: "image/png",
-      } as const;
-      await expect(
-        client.exhibition.uploadArtwork.mutate(input),
-      ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
-      await expect(
-        client.auth.login.mutate({ password: "wrong" }),
-      ).rejects.toMatchObject({ data: { code: "UNAUTHORIZED" } });
-      await client.auth.login.mutate({ password: "test-curator-password" });
-      expect(await client.auth.me.query()).toMatchObject({
-        role: "admin",
-        loginMethod: "password",
-      });
-      const { imageUrl } = await client.exhibition.uploadArtwork.mutate(input);
-      expect(
-        (await client.exhibition.cards.query()).find(
-          (card) => card.id === input.id,
-        )?.imageUrl,
-      ).toBe(imageUrl);
-      const response = await fetch(`${base}${imageUrl}`);
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe("image/png");
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(image);
-      await client.auth.logout.mutate();
-      expect(await client.auth.me.query()).toBeNull();
-      const { photoUrl } = await client.guestbook.add.mutate({
-        name: "Visitor",
-        message: "An exhibition reflection",
-        photo: { data: input.data, mimeType: input.mimeType },
-      });
-      expect(photoUrl).toMatch(/^\/api\/media\//);
-      const photo = await fetch(`${base}${photoUrl}`);
-      expect(photo.status).toBe(200);
-      expect(Buffer.from(await photo.arrayBuffer())).toEqual(image);
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
-    }
   });
 });

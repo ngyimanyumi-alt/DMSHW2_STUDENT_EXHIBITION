@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: lenormand-gallery
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: GOOGLE_APPS_SCRIPT_URL
+        sync: false
+      - key: GOOGLE_APPS_SCRIPT_SECRET
+        sync: false
+      - key: CURATOR_PASSWORD
+        sync: false
+      - key: CURATOR_SESSION_SECRET
+        sync: false

@@ -1,13 +1,9 @@
-import { desc, eq } from "drizzle-orm";
 import {
-  exhibitionCardOverrides,
-  exhibitionSettings,
-  guestbookEntries,
   type ExhibitionCardOverride,
   type ExhibitionSettings,
   type GuestbookEntry,
 } from "../drizzle/schema";
-import { getDb } from "./db";
+import { callGoogleStorage } from "./googleDriveStorage";
 
 export type CardTextUpdate = Pick<
   ExhibitionCardOverride,
@@ -26,89 +22,102 @@ export type ExhibitionSettingsUpdate = Pick<
   "titleZh" | "titleEn" | "statementZh" | "statementEn"
 >;
 
-async function requireDb() {
-  const db = await getDb();
-  if (!db) throw new Error("Database is unavailable");
-  return db;
+type StoredCardOverride = Omit<ExhibitionCardOverride, "updatedAt"> & {
+  updatedAt: string;
+};
+type StoredSettings = Omit<ExhibitionSettings, "updatedAt"> & {
+  updatedAt: string;
+};
+type StoredGuestbookEntry = Omit<GuestbookEntry, "createdAt"> & {
+  createdAt: string;
+};
+
+function storedDate(value: string): Date {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Google Sheets returned an invalid date");
+  }
+  return date;
+}
+
+function nullableText(value: string | null): string | null {
+  return value === "" ? null : value;
+}
+
+function mapCardOverride(row: StoredCardOverride): ExhibitionCardOverride {
+  return {
+    ...row,
+    nameZh: nullableText(row.nameZh),
+    nameEn: nullableText(row.nameEn),
+    keywordsZh: nullableText(row.keywordsZh),
+    keywordsEn: nullableText(row.keywordsEn),
+    descriptionZh: nullableText(row.descriptionZh),
+    descriptionEn: nullableText(row.descriptionEn),
+    artist: nullableText(row.artist),
+    imageUrl: nullableText(row.imageUrl),
+    driveUrl: nullableText(row.driveUrl),
+    updatedAt: storedDate(row.updatedAt),
+  };
+}
+
+function mapGuestbookEntry(row: StoredGuestbookEntry): GuestbookEntry {
+  return {
+    ...row,
+    photoUrl: nullableText(row.photoUrl),
+    createdAt: storedDate(row.createdAt),
+  };
 }
 
 export async function getCardOverrides(): Promise<ExhibitionCardOverride[]> {
-  const db = await requireDb();
-  return db.select().from(exhibitionCardOverrides);
+  const rows =
+    await callGoogleStorage<StoredCardOverride[]>("getCardOverrides");
+  return rows.map(mapCardOverride);
 }
 
 export async function saveCardTextOverride(
-  input: CardTextUpdate
+  input: CardTextUpdate,
 ): Promise<void> {
-  const db = await requireDb();
-  await db
-    .insert(exhibitionCardOverrides)
-    .values(input)
-    .onConflictDoUpdate({
-      target: exhibitionCardOverrides.cardId,
-      set: {
-        nameZh: input.nameZh,
-        nameEn: input.nameEn,
-        keywordsZh: input.keywordsZh,
-        keywordsEn: input.keywordsEn,
-        descriptionZh: input.descriptionZh,
-        descriptionEn: input.descriptionEn,
-        artist: input.artist,
-      },
-    });
+  await callGoogleStorage<null>("saveCardTextOverride", input);
 }
 
 export async function saveCardMedia(
   cardId: number,
-  input: { imageUrl: string; driveUrl: string | null }
+  input: { imageUrl: string; driveUrl: string | null },
 ): Promise<void> {
-  const db = await requireDb();
-  await db
-    .insert(exhibitionCardOverrides)
-    .values({ cardId, ...input })
-    .onConflictDoUpdate({
-      target: exhibitionCardOverrides.cardId,
-      set: input,
-    });
+  await callGoogleStorage<null>("saveCardMedia", { cardId, ...input });
 }
 
 export async function getSavedExhibitionSettings(): Promise<
   ExhibitionSettings | undefined
 > {
-  const db = await requireDb();
-  const rows = await db
-    .select()
-    .from(exhibitionSettings)
-    .where(eq(exhibitionSettings.id, 1))
-    .limit(1);
-  return rows[0];
+  const settings = await callGoogleStorage<StoredSettings | null>(
+    "getSavedExhibitionSettings",
+  );
+  if (!settings) return undefined;
+  return {
+    ...settings,
+    updatedAt: storedDate(settings.updatedAt),
+  };
 }
 
 export async function saveExhibitionSettings(
-  input: ExhibitionSettingsUpdate
+  input: ExhibitionSettingsUpdate,
 ): Promise<void> {
-  const db = await requireDb();
-  await db
-    .insert(exhibitionSettings)
-    .values({ id: 1, ...input })
-    .onConflictDoUpdate({ target: exhibitionSettings.id, set: input });
+  await callGoogleStorage<null>("saveExhibitionSettings", input);
 }
 
 export async function getVisibleGuestbookEntries(): Promise<GuestbookEntry[]> {
-  const db = await requireDb();
-  return db
-    .select()
-    .from(guestbookEntries)
-    .where(eq(guestbookEntries.hidden, false))
-    .orderBy(desc(guestbookEntries.createdAt), desc(guestbookEntries.id));
+  const entries = await callGoogleStorage<StoredGuestbookEntry[]>(
+    "getVisibleGuestbookEntries",
+  );
+  return entries.map(mapGuestbookEntry);
 }
 
 export async function getAllGuestbookEntries(): Promise<GuestbookEntry[]> {
-  const db = await requireDb();
-  return db
-    .select()
-    .from(guestbookEntries)
-    .orderBy(desc(guestbookEntries.createdAt), desc(guestbookEntries.id));
+  const entries = await callGoogleStorage<StoredGuestbookEntry[]>(
+    "getAllGuestbookEntries",
+  );
+  return entries.map(mapGuestbookEntry);
 }
 
 export async function addGuestbookEntry(input: {
@@ -116,22 +125,16 @@ export async function addGuestbookEntry(input: {
   message: string;
   photoUrl: string | null;
 }): Promise<GuestbookEntry> {
-  const db = await requireDb();
-  const rows = await db.insert(guestbookEntries).values({
-    ...input,
-    hidden: false,
-  }).returning();
-  if (!rows[0]) throw new Error("Guestbook entry could not be loaded");
-  return rows[0];
+  const entry = await callGoogleStorage<StoredGuestbookEntry>(
+    "addGuestbookEntry",
+    input,
+  );
+  return mapGuestbookEntry(entry);
 }
 
 export async function setGuestbookEntryHidden(
   id: number,
-  hidden: boolean
+  hidden: boolean,
 ): Promise<void> {
-  const db = await requireDb();
-  await db
-    .update(guestbookEntries)
-    .set({ hidden })
-    .where(eq(guestbookEntries.id, id));
+  await callGoogleStorage<null>("setGuestbookEntryHidden", { id, hidden });
 }
