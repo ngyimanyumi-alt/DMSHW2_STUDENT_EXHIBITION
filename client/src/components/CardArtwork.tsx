@@ -38,6 +38,7 @@ import {
   UserRoundCheck,
 } from "lucide-react";
 import type { CardSeed } from "@shared/cards";
+import { getDisplayImageUrl } from "@/lib/gallery";
 
 export type CardArtworkProps = {
   card: Pick<CardSeed, "id" | "nameZh" | "nameEn"> & {
@@ -147,7 +148,7 @@ export function CardArtwork({
       {hasImage ? (
         <img
           className="artwork-image h-full w-full object-contain"
-          src={card.imageUrl ?? undefined}
+          src={card.imageUrl ? getDisplayImageUrl(card.imageUrl) : undefined}
           alt={label}
           onError={() => setImageFailed(true)}
         />

@@ -21,6 +21,33 @@ export type GuestEntry = {
   hidden: boolean;
 };
 
+export function getDisplayImageUrl(imageUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(imageUrl);
+  } catch {
+    return imageUrl;
+  }
+
+  if (url.protocol !== "https:" || url.hostname !== "drive.google.com") {
+    return imageUrl;
+  }
+
+  let fileId: string | null = null;
+  const filePath = url.pathname.match(/^\/file\/d\/([^/]+)(?:\/.*)?$/);
+  if (filePath) {
+    fileId = filePath[1] ?? null;
+  } else if (["/open", "/uc", "/thumbnail"].includes(url.pathname)) {
+    fileId = url.searchParams.get("id");
+  }
+  if (!fileId) return imageUrl;
+
+  const thumbnail = new URL("https://drive.google.com/thumbnail");
+  thumbnail.searchParams.set("id", fileId);
+  thumbnail.searchParams.set("sz", "w2000");
+  return thumbnail.toString();
+}
+
 export const COPY = {
   zh: {
     exhibition: "展覽",
@@ -189,8 +216,7 @@ export const COPY = {
     saving: "Saving…",
     manageTitle: "Curator studio",
     login: "Sign in as curator",
-    loginNote:
-      "Enter the curator password to manage works and reflections.",
+    loginNote: "Enter the curator password to manage works and reflections.",
     curatorPassword: "Curator password",
     signingIn: "Signing in…",
     denied: "This account does not have curator access.",
@@ -232,7 +258,7 @@ export const COPY = {
 
 export async function readImage(
   file: File,
-  maxMB: number
+  maxMB: number,
 ): Promise<{
   data: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp";

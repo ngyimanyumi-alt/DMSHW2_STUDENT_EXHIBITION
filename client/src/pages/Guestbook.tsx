@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Camera, Loader2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { COPY, formatDate, readImage, type Language } from "@/lib/gallery";
+import {
+  COPY,
+  formatDate,
+  getDisplayImageUrl,
+  readImage,
+  type Language,
+} from "@/lib/gallery";
 
 export default function Guestbook({ lang }: { lang: Language }) {
   const copy = COPY[lang];
@@ -206,7 +212,7 @@ export default function Guestbook({ lang }: { lang: Language }) {
                 {entry.photoUrl && (
                   <img
                     className="reflection-photo"
-                    src={entry.photoUrl}
+                    src={getDisplayImageUrl(entry.photoUrl)}
                     alt={
                       lang === "zh"
                         ? `${entry.name} 的展覽照片`
